@@ -11,7 +11,7 @@ from model import Net
 
 
 NUM_CLIENTS = 50
-NUM_ROUNDS = 100
+NUM_ROUNDS = 30
 CLIENTS_PER_ROUND = 10
 
 def run_experiment(mode, use_quantization):
@@ -206,10 +206,13 @@ for mode, use_quantization in experiments:
 
 
 # ------------------ PLOT ------------------
+def moving_avg(values, window=5):
+    return pd.Series(values).rolling(window, min_periods=1).mean()
+
 plt.figure()
 for key, result in all_results.items():
-    plt.plot(result["accuracy"], label=key)
-plt.title("Accuracy Comparison")
+    plt.plot(moving_avg(result["accuracy"]), label=key)
+plt.title("Accuracy Comparison (5-Round Avg)")
 plt.xlabel("Round")
 plt.ylabel("Accuracy")
 plt.legend()
@@ -217,8 +220,8 @@ plt.savefig("accuracy_comp.png")
 
 plt.figure()
 for key, result in all_results.items():
-    plt.plot(result["total_energy"], label=key)
-plt.title("Total Energy Comparison")
+    plt.plot(moving_avg(result["total_energy"]), label=key)
+plt.title("Total Energy Comparison (5-Round Avg)")
 plt.xlabel("Round")
 plt.ylabel("Total Energy")
 plt.legend()
