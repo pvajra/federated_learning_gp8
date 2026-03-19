@@ -19,7 +19,7 @@ class FlowerClient(fl.client.NumPyClient):
     
     def set_parameters(self, parameters):
         params_dict = zip(self.model.state_dict().keys(), parameters)
-        # Fix: Ensure tensors are created on the correct DEVICE to avoid mismatch
+        # Fix: Ensure tensors are created on the correct DEVICE
         state_dict = {k: torch.tensor(v, device=DEVICE) for k, v in params_dict}
         self.model.load_state_dict(state_dict, strict=True)
 
@@ -27,13 +27,12 @@ class FlowerClient(fl.client.NumPyClient):
         return [p.astype("float16") for p in parameters]
 
     def fit(self, parameters, config):
-        # Resolve profile values with defaults to avoid KeyError
-        dropout = self.profile.get("dropout", 0.0)
+        # 1. Resolve profile values with defaults to avoid KeyErrors
+        dropout_prob = self.profile.get("dropout", 0.0)
         cpu_factor = self.profile.get("cpu_factor", 1.0)
         compression = self.profile.get("compression", 1.0)
 
-        # 1. DROPOUT LOGIC
-        if random.random() < dropout:
+        if random.random() < dropout_prob:
             metrics = {
                 "total_energy": 0.0,
                 "compute_energy": 0.0,
@@ -48,26 +47,27 @@ class FlowerClient(fl.client.NumPyClient):
                 params = self.quantize_parameters(params)
             return params, 0, metrics
 
-        # 2. TRAINING SETUP
+        # 2. Training Setup
         self.set_parameters(parameters)
         optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01)
         self.model.train()
         steps = 0
         max_steps = int(len(self.trainloader) * cpu_factor)
         
+        # Optimization: Instantiate loss function once
+        loss_fn = torch.nn.CrossEntropyLoss()
+        
         for i, (data, target) in enumerate(self.trainloader):
             if i >= max_steps: break
             data, target = data.to(DEVICE), target.to(DEVICE)
             optimizer.zero_grad()
-            loss = torch.nn.CrossEntropyLoss()(self.model(data), target)
+            loss = loss_fn(self.model(data), target)
             loss.backward()
             optimizer.step()
             steps += 1
         
-        # 3. ENERGY CALCULATION (Carbon-Aware Logic)
+        # 3. Energy Calculation
         comp_e = (steps * cpu_factor * 1000) * ALPHA
-        
-        # Adjust communication energy based on quantization
         model_size = sum(p.numel() for p in self.model.parameters())
         q_factor = 0.5 if self.use_quantization else 1.0
         comm_e = (model_size * compression * q_factor) * BETA
@@ -89,5 +89,6 @@ class FlowerClient(fl.client.NumPyClient):
         return params, len(self.trainloader.dataset), metrics
 
     def evaluate(self, parameters, config):
+        """Standard Flower evaluate method to prevent runtime errors."""
         self.set_parameters(parameters)
         return 0.0, len(self.trainloader.dataset), {}
