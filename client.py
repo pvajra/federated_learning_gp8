@@ -9,10 +9,11 @@ BETA = 0.0000005
 
 class FlowerClient(fl.client.NumPyClient):
 
-    def __init__(self, trainloader, device_profile):
+    def __init__(self, trainloader, device_profile, use_quantization=False):
         self.model = Net()
         self.trainloader = trainloader
         self.profile = device_profile
+        self.use_quantization = use_quantization
 
     def get_parameters(self, config):
         return [val.cpu().numpy() for val in self.model.state_dict().values()]
@@ -26,7 +27,13 @@ class FlowerClient(fl.client.NumPyClient):
 
         # ------------------ DROPOUT ------------------
         if random.random() < self.profile["dropout"]:
-            return self.get_parameters({}), 0, {
+
+            params = self.get_parameters({})
+
+            if self.use_quantization:
+                params = self.quantize_parameters(params)
+
+            return params, 0, {
                 "compute_energy": 0,
                 "communication_energy": 0,
                 "total_energy": 0,
@@ -67,7 +74,11 @@ class FlowerClient(fl.client.NumPyClient):
         compute_energy = cpu_cycles * ALPHA
 
         model_size = sum(p.numel() for p in self.model.parameters())
-        transmitted_params = model_size * self.profile["compression"]
+
+        width = 16 if self.use_quantization else 32
+        quantization_factor = width / 32.0
+
+        transmitted_params = model_size * self.profile["compression"] * quantization_factor
         communication_energy = transmitted_params * BETA
 
         total_energy = compute_energy + communication_energy
@@ -79,10 +90,19 @@ class FlowerClient(fl.client.NumPyClient):
             "battery": self.profile["battery"],
             "cpu": self.profile["cpu_factor"],
             "data": len(self.trainloader.dataset),
-            "dropout": self.profile["dropout"]
+            "dropout": self.profile["dropout"],
+            "quantized": int(self.use_quantization)
         }
 
-        return self.get_parameters({}), len(self.trainloader.dataset), metrics
+        params = self.get_parameters({})
+
+        if self.use_quantization:
+            params = self.quantize_parameters(params)
+
+        return params, len(self.trainloader.dataset), metrics
+
+    def quantize_parameters(self, parameters):
+        return [p.astype("float16") for p in parameters]
 
     def evaluate(self, parameters, config):
         self.set_parameters(parameters)
