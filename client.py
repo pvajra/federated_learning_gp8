@@ -27,14 +27,19 @@ class FlowerClient(fl.client.NumPyClient):
         return [p.astype("float16") for p in parameters]
 
     def fit(self, parameters, config):
+        # Resolve profile values with defaults to avoid KeyError
+        dropout = self.profile.get("dropout", 0.0)
+        cpu_factor = self.profile.get("cpu_factor", 1.0)
+        compression = self.profile.get("compression", 1.0)
+
         # 1. DROPOUT LOGIC
-        if random.random() < self.profile["dropout"]:
+        if random.random() < dropout:
             metrics = {
                 "total_energy": 0.0,
                 "compute_energy": 0.0,
                 "communication_energy": 0.0,
                 "battery": self.profile.get("battery", 1.0),
-                "cpu": self.profile.get("cpu_factor", 1.0),
+                "cpu": cpu_factor,
                 "dropout": 1.0,
                 "quantized": int(self.use_quantization)
             }
@@ -48,7 +53,7 @@ class FlowerClient(fl.client.NumPyClient):
         optimizer = torch.optim.SGD(self.model.parameters(), lr=0.01)
         self.model.train()
         steps = 0
-        max_steps = int(len(self.trainloader) * self.profile["cpu_factor"])
+        max_steps = int(len(self.trainloader) * cpu_factor)
         
         for i, (data, target) in enumerate(self.trainloader):
             if i >= max_steps: break
@@ -60,19 +65,19 @@ class FlowerClient(fl.client.NumPyClient):
             steps += 1
         
         # 3. ENERGY CALCULATION (Carbon-Aware Logic)
-        comp_e = (steps * self.profile["cpu_factor"] * 1000) * ALPHA
+        comp_e = (steps * cpu_factor * 1000) * ALPHA
         
         # Adjust communication energy based on quantization
         model_size = sum(p.numel() for p in self.model.parameters())
         q_factor = 0.5 if self.use_quantization else 1.0
-        comm_e = (model_size * self.profile["compression"] * q_factor) * BETA
+        comm_e = (model_size * compression * q_factor) * BETA
         
         metrics = {
             "total_energy": comp_e + comm_e,
             "compute_energy": comp_e,
             "communication_energy": comm_e,
             "battery": self.profile.get("battery", 1.0),
-            "cpu": self.profile.get("cpu_factor", 1.0),
+            "cpu": cpu_factor,
             "dropout": 0.0,
             "quantized": int(self.use_quantization)
         }
