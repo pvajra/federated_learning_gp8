@@ -1,11 +1,17 @@
 import flwr as fl
 import torch
 import random
+import os
 from model import Net
 
 ALPHA = 0.000001
 BETA = 0.0000005
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# FIX: Safely fallback to CPU to avoid OOM crashes during heavy parallel simulation
+_device_str = os.getenv("FLOWER_CLIENT_DEVICE", "cpu").lower()
+if _device_str == "cuda" and not torch.cuda.is_available():
+    _device_str = "cpu"
+DEVICE = torch.device(_device_str)
 
 class FlowerClient(fl.client.NumPyClient):
     def __init__(self, trainloader, device_profile, use_quantization=False):
@@ -33,9 +39,14 @@ class FlowerClient(fl.client.NumPyClient):
             if self.use_quantization:
                 params = self.quantize_parameters(params)
             return params, 0, {
-                "compute_energy": 0, "communication_energy": 0, "total_energy": 0,
-                "battery": self.profile.get("battery", 1.0), "cpu": cpu_factor,
-                "compression": compression, "data": 0, "dropout": dropout_prob,
+                "compute_energy": 0.0, 
+                "communication_energy": 0.0, 
+                "total_energy": 0.0,
+                "battery": self.profile.get("battery", 1.0), 
+                "cpu": cpu_factor,
+                "compression": compression, 
+                "data": 0, 
+                "dropout": dropout_prob,
                 "quantized": int(self.use_quantization)
             }
 
@@ -90,5 +101,6 @@ class FlowerClient(fl.client.NumPyClient):
         return [p.astype("float16") for p in parameters]
 
     def evaluate(self, parameters, config):
+        """Standard Flower evaluate method to prevent runtime errors."""
         self.set_parameters(parameters)
         return 0.0, len(self.trainloader.dataset), {}
