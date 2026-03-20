@@ -11,10 +11,12 @@ from model import Net
 
 
 NUM_CLIENTS = 50
-NUM_ROUNDS = 30
+NUM_ROUNDS = 100
 CLIENTS_PER_ROUND = 10
 
+
 def run_experiment(mode, use_quantization):
+
     client_stats = {}
     compute_energy_log = []
     communication_energy_log = []
@@ -24,19 +26,20 @@ def run_experiment(mode, use_quantization):
     def evaluate(server_round, parameters, config):
         acc = test_model(parameters)
         accuracy_history.append(acc)
-
         print(f"Round {server_round} Accuracy: {acc}")
-
         return 0.0, {"accuracy": acc}
 
     def client_fn(cid: str):
-        return FlowerClient(trainloaders[int(cid)], client_profiles[int(cid)], use_quantization=use_quantization)
+        return FlowerClient(
+            trainloaders[int(cid)],
+            client_profiles[int(cid)],
+            use_quantization=use_quantization
+        )
 
     # ------------------ STRATEGY ------------------
     class EnergyStrategy(fl.server.strategy.FedAvg):
 
         def configure_fit(self, server_round, parameters, client_manager):
-
             if mode == "baseline":
                 return super().configure_fit(server_round, parameters, client_manager)
 
@@ -45,19 +48,18 @@ def run_experiment(mode, use_quantization):
 
             for c in clients:
                 cid = c.cid
-
                 if cid not in client_stats:
                     score = random.random()
                 else:
                     score = compute_score(client_stats[cid])
-
                 scored.append((c, score))
 
             scored.sort(key=lambda x: x[1], reverse=True)
 
-            # ------------------ DIVERSITY ------------------
-            top_k = scored[:30]
-            selected = random.sample([c for c, _ in top_k], CLIENTS_PER_ROUND)
+            top_clients = [c for c, _ in scored[:8]]
+            rest = [c for c, _ in scored[8:]]
+            explore = random.sample(rest, min(2, len(rest)))
+            selected = top_clients + explore
 
             return [(c, fl.common.FitIns(parameters, {})) for c in selected]
 
@@ -114,13 +116,16 @@ def run_experiment(mode, use_quantization):
     df.to_csv(f"{run_name}_results.csv", index=False)
     print(f"{run_name}_results.csv saved")
 
-    return  {
+    return {
         "name": run_name,
         "accuracy": accuracy_history[:min_len],
-        "total_energy": total_energy_log[:min_len]
+        "total_energy": total_energy_log[:min_len],
+        "compute_energy": compute_energy_log[:min_len],
+        "communication_energy": communication_energy_log[:min_len]
     }
 
 
+# ------------------ LOAD DATA ------------------
 trainloaders, testloader = load_datasets(NUM_CLIENTS)
 
 
@@ -139,7 +144,7 @@ for cid in range(NUM_CLIENTS):
         profile = {"battery": 0.7, "cpu_factor": 0.8, "compression": 0.7, "dropout": 0.15}
 
     else:
-        profile = {"battery": 1.0, "cpu_factor": 1.2, "compression": 1.0, "dropout": 0.05}
+        profile = {"battery": 1.0, "cpu_factor": 1.0, "compression": 1.0, "dropout": 0.05}
 
     client_profiles[cid] = profile
 
@@ -168,29 +173,22 @@ def test_model(parameters):
 
 # ------------------ SCORE ------------------
 def compute_score(stats):
+    MAX_COMPUTE = 0.05
+    MAX_COMM = 0.025
 
-    return (
-        0.2 * stats["battery"]
-        + 0.2 * stats["cpu"]
-        + 0.2 * (1 - stats["dropout"])
-        - 0.2 * stats["compute_energy"]
-        - 0.2 * stats["communication_energy"]
-    )
+    norm_compute = min(stats["compute_energy"] / MAX_COMPUTE, 1.0)
+    norm_comm = min(stats["communication_energy"] / MAX_COMM, 1.0)
+    norm_total_energy = (norm_compute + norm_comm) / 2.0
 
+    reliability = 1 - stats["dropout"]
+    data_score = min(stats.get("data", 0) / 1200, 1.0)  # normalize by max dataset size per client
 
-# # ------------------ PLOT ------------------
-# plt.figure()
-# plt.plot(accuracy_history)
-# plt.title("Accuracy")
-# plt.savefig(f"{MODE}_accuracy.png")
-#
-# plt.figure()
-# plt.plot(total_energy_log)
-# plt.title("Energy")
-# plt.savefig(f"{MODE}_energy.png")
+    # Balance efficiency with data contribution
+    efficiency = (0.65 * reliability + 0.35 * data_score) / (norm_total_energy + 0.1)
 
+    return efficiency
 
-# ------------------ RUN ------------------
+# ------------------ RUN EXPERIMENTS ------------------
 experiments = [
     ("baseline", False),
     ("baseline", True),
@@ -205,10 +203,12 @@ for mode, use_quantization in experiments:
     all_results[key] = run_experiment(mode, use_quantization)
 
 
-# ------------------ PLOT ------------------
+# ------------------ PLOTS ------------------
 def moving_avg(values, window=5):
     return pd.Series(values).rolling(window, min_periods=1).mean()
 
+
+# Accuracy
 plt.figure()
 for key, result in all_results.items():
     plt.plot(moving_avg(result["accuracy"]), label=key)
@@ -216,8 +216,11 @@ plt.title("Accuracy Comparison (5-Round Avg)")
 plt.xlabel("Round")
 plt.ylabel("Accuracy")
 plt.legend()
+plt.grid()
 plt.savefig("accuracy_comp.png")
 
+
+# Total Energy
 plt.figure()
 for key, result in all_results.items():
     plt.plot(moving_avg(result["total_energy"]), label=key)
@@ -225,4 +228,29 @@ plt.title("Total Energy Comparison (5-Round Avg)")
 plt.xlabel("Round")
 plt.ylabel("Total Energy")
 plt.legend()
+plt.grid()
 plt.savefig("energy_comp.png")
+
+
+# Communication Energy
+plt.figure()
+for key, result in all_results.items():
+    plt.plot(moving_avg(result["communication_energy"]), label=key)
+plt.title("Communication Energy Comparison (5-Round Avg)")
+plt.xlabel("Round")
+plt.ylabel("Communication Energy")
+plt.legend()
+plt.grid()
+plt.savefig("communication_energy_comp.png")
+
+
+# Compute Energy
+plt.figure()
+for key, result in all_results.items():
+    plt.plot(moving_avg(result["compute_energy"]), label=key)
+plt.title("Compute Energy Comparison (5-Round Avg)")
+plt.xlabel("Round")
+plt.ylabel("Compute Energy")
+plt.legend()
+plt.grid()
+plt.savefig("compute_energy_comp.png")

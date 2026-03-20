@@ -27,13 +27,10 @@ class FlowerClient(fl.client.NumPyClient):
 
         # ------------------ DROPOUT ------------------
         if random.random() < self.profile["dropout"]:
-
             params = self.get_parameters({})
-
             if self.use_quantization:
                 params = self.quantize_parameters(params)
-
-            return params, 0, {
+            return params, 0, {   # <-- num_examples=0 means FedAvg gives it zero weight
                 "compute_energy": 0,
                 "communication_energy": 0,
                 "total_energy": 0,
@@ -54,7 +51,7 @@ class FlowerClient(fl.client.NumPyClient):
         training_steps = 0
 
         # ------------------ ENERGY-AWARE TRAINING ------------------
-        max_steps = int(len(self.trainloader) * self.profile["cpu_factor"])
+        max_steps = int(len(self.trainloader) * min(self.profile["cpu_factor"], 1.0))
 
         for i, (data, target) in enumerate(self.trainloader):
 
