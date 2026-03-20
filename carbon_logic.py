@@ -5,9 +5,8 @@
 # Simulates three geographic energy zones with sinusoidal daily patterns
 # and Gaussian noise, modelling real-world renewable grid fluctuation.
 #
-# Used by simulation.py to score clients during carbon-aware DQN selection.
+# Provides utilities to score clients by carbon intensity in carbon-aware simulations.
 # =============================================================================
-
 import math
 import random
 from typing import Dict
@@ -42,9 +41,10 @@ def get_carbon_intensity_by_index(idx: int, round_num: int, num_clients: int) ->
 def get_normalised_carbon_by_index(idx: int, round_num: int, num_clients: int) -> float:
     return min(get_carbon_intensity_by_index(idx, round_num, num_clients) / _MAX_CARBON, 1.0)
 
-reset_carbon_cache()
-print('✅ Carbon logic ready')
-print('   Sample intensities at round 5 (gCO2eq/kWh):')
-for i, z in enumerate(_ZONE_NAMES):
-    print(f'   {z:>6}: {get_carbon_intensity_by_index(i*17, 5, 50):.1f}')
-reset_carbon_cache()
+if __name__ == "__main__":
+    reset_carbon_cache()
+    print('✅ Carbon logic ready')
+    print('   Sample intensities at round 5 (gCO2eq/kWh):')
+    for i, z in enumerate(_ZONE_NAMES):
+        print(f'   {z:>6}: {get_carbon_intensity_by_index(i*17, 5, 50):.1f}')
+    reset_carbon_cache()
