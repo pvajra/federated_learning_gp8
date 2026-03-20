@@ -9,11 +9,9 @@
 # Trained online via experience replay after every FL aggregation round.
 # Reward: +1.0 x delta_accuracy - 0.4 x norm_energy - 0.6 x norm_carbon
 # =============================================================================
-
 import random
 from collections import deque
 from typing import Dict, List
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -21,7 +19,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 _S = 5; _H = 128; _LR = 3e-4; _G = 0.95
-_EPS_START = 1.0; _EPS_MIN = 0.05; _EPS_DECAY = 0.96
+_EPS_START = 1.0; _EPS_MIN = 0.05; _EPS_DECAY = 0.905
 _BS = 64; _CAP = 4000; _TSYNC = 5
 
 class _QNet(nn.Module):
@@ -84,6 +82,7 @@ class DQNAgent:
     def compute_reward(norm_e, norm_c, acc_gain):
         return 1.0 * acc_gain - 0.4 * norm_e - 0.6 * norm_c
 
-_a = DQNAgent(0)
-print(f'✅ DQNAgent | test Q: {_a._score([0.3,0.7,0.8,0.1,0.5]):.4f} | ε={_a.eps}')
-del _a
+if __name__ == "__main__":
+    _a = DQNAgent(0)
+    print(f'✅ DQNAgent | test Q: {_a._score([0.3,0.7,0.8,0.1,0.5]):.4f} | ε={_a.eps}')
+    del _a
