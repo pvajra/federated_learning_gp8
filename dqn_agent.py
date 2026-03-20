@@ -1,7 +1,7 @@
 # =============================================================================
 # dqn_agent.py
 # Deep Q-Network for carbon-aware federated client selection.
-# Animesh Kumar (250591936) — Newcastle University
+# Animesh Kumar — Newcastle University
 #
 # State vector (dim=5):
 #   [norm_carbon, battery, cpu_norm, dropout_risk, round_progress]
