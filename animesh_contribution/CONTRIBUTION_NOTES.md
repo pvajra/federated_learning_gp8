@@ -44,7 +44,7 @@ strategy embedded directly into the simulation pipeline.
 - Epsilon-greedy exploration: ε starts at 1.0 and decays by 0.905 per round (≈0.05 after 30 rounds; lower-bounded at 0.05)
 - Reward: `+1.0 × Δaccuracy − 0.4 × norm_energy − 0.6 × norm_carbon`
 
-**3. Energy-Aware Strategy (`EnergyAwareStrategy`)**
+**3. Energy-Aware Strategy (inside `FL_Group8_Colab_FINAL.ipynb` Cell 8)**
 - Overrides `FedAvg.configure_fit` for DQN-based selection
 - Implements proposal Eq. 1 participation score (W1=0.30, W2=0.30, W3=0.20, W4=0.20)
 - Implements proposal Eq. 2–4 joint energy cost model
